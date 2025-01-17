@@ -43,12 +43,12 @@ module Langchain::LLM
       @api_key = api_key
       @defaults = DEFAULTS.merge(default_options)
       chat_parameters.update(
-        model: {default: @defaults[:chat_model]},
-        temperature: {default: @defaults[:temperature]},
+        model: { default: @defaults[:chat_model] },
+        temperature: { default: @defaults[:temperature] },
         template: {},
-        stream: {default: false},
-        response_format: {default: @defaults[:response_format]},
-        options: {default: @defaults[:options]}
+        stream: { default: false },
+        response_format: { default: @defaults[:response_format] },
+        options: { default: @defaults[:options] }
       )
       chat_parameters.remap(response_format: :format)
     end
@@ -142,17 +142,8 @@ module Langchain::LLM
       }
 
       parameters[:options] = llm_parameters.compact
-      responses_stream = []
-
-      client.post("api/generate", parameters) do |req|
-        req.options.on_data = json_responses_chunk_handler do |parsed_chunk|
-          responses_stream << parsed_chunk
-
-          block&.call(OllamaResponse.new(parsed_chunk, model: parameters[:model]))
-        end
-      end
-
-      generate_final_completion_response(responses_stream, parameters[:model])
+      response = client.post("api/generate", parameters)
+      OllamaResponse.new(response.body, model: parameters[:model])
     end
 
     # Generate a chat completion
@@ -179,17 +170,11 @@ module Langchain::LLM
     #   images (optional): a list of images to include in the message (for multimodal models such as llava)
     def chat(messages:, model: nil, **params, &block)
       parameters = chat_parameters.to_params(params.merge(messages:, model:, stream: block_given?)) # rubocop:disable Performance/BlockGivenWithExplicitBlock
-      responses_stream = []
 
-      client.post("api/chat", parameters) do |req|
-        req.options.on_data = json_responses_chunk_handler do |parsed_chunk|
-          responses_stream << parsed_chunk
-
-          block&.call(OllamaResponse.new(parsed_chunk, model: parameters[:model]))
-        end
-      end
-
-      generate_final_chat_completion_response(responses_stream, parameters[:model])
+      response = client.post("api/chat", parameters)
+      ollama_response = OllamaResponse.new(response.body, model: parameters[:model])
+      block&.call(ollama_response) if block_given?
+      ollama_response
     end
 
     #
@@ -273,14 +258,14 @@ module Langchain::LLM
         conn.request :json
         conn.response :json
         conn.response :raise_error
-        conn.response :logger, Langchain.logger, {headers: true, bodies: true, errors: true}
+        conn.response :logger, Langchain.logger, { headers: true, bodies: true, errors: true }
       end
     end
 
     def auth_headers
       return unless @api_key
 
-      {"Authorization" => "Bearer #{@api_key}"}
+      { "Authorization" => "Bearer #{@api_key}" }
     end
 
     def json_responses_chunk_handler(&block)
